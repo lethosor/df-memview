@@ -12,6 +12,11 @@ class MemoryRange:
     start = 0
     size = 0
     buffer = bytes()
+
+    @property
+    def bad(self):
+        return self.size == 0
+
     @property
     def end(self):
         # Contained in range, unlike t_memrange::end

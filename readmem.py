@@ -4,7 +4,7 @@ from memory import Memory, MemoryRange
 
 def read(sock, length, timeout=1):
     end_time = time.time() + timeout
-    data = ''
+    data = b''
     while len(data) < length:
         chunk = sock.recv(length - len(data))
         if not chunk:
@@ -25,8 +25,7 @@ read_uint8 = read_int_wrapper('B', 1)
 read_uint32 = read_int_wrapper('I', 4)
 read_uint64 = read_int_wrapper('Q', 8)
 
-if __name__ == '__main__':
-    start = time.time()
+def read_from_port(port=5020, process=lambda data: None):
     s = socket.socket()
     s.connect(('localhost', 5020))
     s.setblocking(1)
@@ -44,21 +43,31 @@ if __name__ == '__main__':
                     setattr(mrange, flag, True)
             mrange.start = read_ptr(s)
             mrange.size = read_uint32(s)
-            # print(mrange.size)
-            mrange.buffer = read(s, mrange.size)
+            if not mrange.bad:
+                mrange.buffer = read(s, mrange.size)
             name_md5 = read(s, 32)
-            assert(name_md5 == hashlib.md5(mrange.name).hexdigest())
-            print(mrange)
-            # print(len(mrange.buffer))
-            memory.ranges.append(mrange)
-        assert(s.recv(1) == '')
+            assert(name_md5 == hashlib.md5(mrange.name).hexdigest().encode('utf-8'))
+            if not mrange.bad:
+                try:
+                    process({'index': i, 'count': i+1, 'total': num_ranges, 'range': mrange})
+                except Exception:
+                    pass
+                memory.ranges.append(mrange)
+        assert(s.recv(1) == b'')
     except Exception:
         import traceback
         traceback.print_exc()
     finally:
         # s.shutdown(socket.SHUT_RDWR)
         s.close()
-    print(sum(map(lambda r: r.size if r.read else 0, memory.ranges)))
+    return memory
+
+if __name__ == '__main__':
+    def _process(data):
+        print('{count}/{total}: {range!r}'.format(**data))
+    start = time.time()
+    memory = read_from_port(process=_process)
+    print('%i bytes' % sum(map(lambda r: r.size if r.read else 0, memory.ranges)))
     print('read in %f seconds' % (time.time() - start))
     sys.stdin.readline()
     print('')

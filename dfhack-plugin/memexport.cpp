@@ -119,6 +119,17 @@ struct {
 
 */
 
+bool valid_ptr (void *ptr)
+{
+    static std::vector<t_memrange> ranges;
+    ranges.clear();
+    Core::getInstance().p->getMemRanges(ranges);
+    for (auto it = ranges.begin(); it != ranges.end(); ++it)
+        if (it->isInRange(ptr))
+            return true;
+    return false;
+}
+
 DFhackCExport command_result plugin_onupdate (color_ostream &out)
 {
     static const int chunk_size = 4096;
@@ -146,6 +157,7 @@ DFhackCExport command_result plugin_onupdate (color_ostream &out)
             }
             wrapper.Send(uint32_t(ranges.size()));
             size_t index = 0;
+            uint8_t *pos, *end;
             for (auto r = ranges.begin(); wrapper.Success() && r != ranges.end(); ++r)
             {
                 std::string name(r->name);
@@ -157,11 +169,17 @@ DFhackCExport command_result plugin_onupdate (color_ostream &out)
                 wrapper.Send(uint8_t(r->execute));
                 wrapper.Send(uint8_t(r->shared));
 
-                wrapper.Send(uintptr_t(r->start));
-                wrapper.Send(uint32_t((uint8_t*)r->end - (uint8_t*)r->start));
+                pos = (uint8_t*)r->start;
+                end = (uint8_t*)r->end;
+                wrapper.Send(uintptr_t(pos));
+                if (!valid_ptr(pos) || !valid_ptr(end - 1))
+                {
+                    out.printerr("  range vanished!\n");
+                    wrapper.Send(uint32_t(0));
+                    goto send_md5;
+                }
+                wrapper.Send(uint32_t(end - pos));
 
-                auto *pos = (uint8_t*)r->start;
-                auto *end = (uint8_t*)r->end;
                 int sent;
                 size_t cur_size;
                 while (pos < end)
@@ -177,6 +195,7 @@ DFhackCExport command_result plugin_onupdate (color_ostream &out)
                     }
                     pos += sent;
                 }
+                send_md5:
                 wrapper.Send(md5.getHashFromString(name));
             }
 
